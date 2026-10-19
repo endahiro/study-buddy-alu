@@ -1,12 +1,14 @@
 """End-to-end tests for the typer CLI."""
 
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
 from typer.testing import CliRunner
 
 from studybuddy.cli import app
-from studybuddy.llm.mock import CANNED_RESPONSE
+from studybuddy.llm import ProviderError
+from studybuddy.llm.mock import CANNED_RESPONSE, MockProvider
 
 runner = CliRunner()
 
@@ -57,3 +59,38 @@ def test_chat_finds_project_in_parent_and_streams_mock_reply(in_tmp: Path) -> No
     assert result.exit_code == 0, result.output
     assert "using provider: mock" in result.output
     assert CANNED_RESPONSE in result.output
+
+
+def test_chat_rejects_unknown_provider(in_tmp: Path) -> None:
+    runner.invoke(app, ["init"])
+    result = runner.invoke(app, ["chat", "--provider", "gpt"])
+    assert result.exit_code == 1
+    assert "Unknown provider 'gpt'" in result.output
+    assert "Traceback" not in result.output
+
+
+def test_chat_survives_a_failed_request(in_tmp: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def failing_stream(self: object, messages: object, **kwargs: object) -> Iterator[str]:
+        raise ProviderError("network down")
+        yield  # pragma: no cover - makes this a generator
+
+    monkeypatch.setattr(MockProvider, "stream", failing_stream)
+    runner.invoke(app, ["init"])
+    result = runner.invoke(app, ["chat", "-p", "mock"], input="hello\nexit\n")
+    assert result.exit_code == 0, result.output
+    assert "Error: network down" in result.output
+    assert "Bye!" in result.output
+
+
+def test_chat_passes_model_to_factory(in_tmp: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    seen: dict[str, object] = {}
+
+    def fake_get_provider(preferred: str | None = None, model: str | None = None) -> MockProvider:
+        seen.update(preferred=preferred, model=model)
+        return MockProvider(delay=0)
+
+    monkeypatch.setattr("studybuddy.cli.get_provider", fake_get_provider)
+    runner.invoke(app, ["init"])
+    result = runner.invoke(app, ["chat", "-p", "ollama", "-m", "llama3.2:1b"], input="exit\n")
+    assert result.exit_code == 0, result.output
+    assert seen == {"preferred": "ollama", "model": "llama3.2:1b"}

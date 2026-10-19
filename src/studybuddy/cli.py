@@ -6,10 +6,11 @@ from pathlib import Path
 
 import typer
 from rich.console import Console
+from rich.markup import escape
 
 from studybuddy.agent import Agent
 from studybuddy.chat import run_repl
-from studybuddy.llm import get_provider
+from studybuddy.llm import ProviderError, get_provider
 from studybuddy.project import (
     PROJECT_DIR_NAME,
     ProjectAlreadyInitializedError,
@@ -44,7 +45,20 @@ def init() -> None:
 
 
 @app.command()
-def chat() -> None:
+def chat(
+    provider: str | None = typer.Option(
+        None,
+        "--provider",
+        "-p",
+        help="LLM to use: anthropic, gemini, ollama, or mock. Auto-detected if omitted.",
+    ),
+    model: str | None = typer.Option(
+        None,
+        "--model",
+        "-m",
+        help="Model name for the chosen provider (e.g. llama3.2:1b). Provider default if omitted.",
+    ),
+) -> None:
     """Start an interactive tutoring session in the current project."""
     root = find_project_root(Path.cwd())
     if root is None:
@@ -53,4 +67,9 @@ def chat() -> None:
             "or any parent.\nRun [bold cyan]studybuddy init[/bold cyan] first."
         )
         raise typer.Exit(code=1)
-    run_repl(console, Agent(get_provider()))
+    try:
+        llm = get_provider(provider, model)
+    except (ProviderError, ValueError) as exc:
+        console.print(f"[bold red]Error:[/bold red] {escape(str(exc))}", highlight=False)
+        raise typer.Exit(code=1) from None
+    run_repl(console, Agent(llm))

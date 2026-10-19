@@ -7,8 +7,10 @@ exits on ``exit``/``quit``, Ctrl+C, or Ctrl+D.
 from __future__ import annotations
 
 from rich.console import Console
+from rich.markup import escape
 
 from studybuddy.agent import Agent
+from studybuddy.llm import ProviderError
 
 PROMPT = "[bold cyan]studybuddy>[/bold cyan] "
 EXIT_COMMANDS = frozenset({"exit", "quit"})
@@ -46,4 +48,7 @@ def run_repl(console: Console, agent: Agent) -> None:
         except KeyboardInterrupt:
             # DESIGN: Ctrl+C mid-stream cancels only the current reply, not the session.
             console.print("\n[dim](interrupted)[/dim]\n")
+        except ProviderError as exc:
+            # DESIGN: a failed request (network, auth, refusal) keeps the session alive.
+            console.print(f"\n[bold red]Error:[/bold red] {escape(str(exc))}\n")
     console.print("[dim]Bye![/dim]")

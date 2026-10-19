@@ -14,7 +14,8 @@ from studybuddy.llm.base import LLMProvider, LLMResponse, Message
 
 CANNED_RESPONSE = (
     "Hi — I'm Study Buddy running on the mock provider. "
-    "Real LLMs come online next session. What are you working on?"
+    "Set ANTHROPIC_API_KEY or GEMINI_API_KEY, or start Ollama, to use a real model. "
+    "What are you working on?"
 )
 
 

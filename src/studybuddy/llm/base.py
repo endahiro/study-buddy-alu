@@ -13,6 +13,14 @@ from dataclasses import dataclass
 from typing import Any
 
 
+class ProviderError(Exception):
+    """Raised when a provider cannot be constructed or a request to it fails.
+
+    Providers wrap their SDK's own exceptions in this so callers outside
+    ``studybuddy.llm`` never need to know which SDK is in use.
+    """
+
+
 @dataclass(frozen=True)
 class Message:
     """A single chat message.
