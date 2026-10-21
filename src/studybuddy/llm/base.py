@@ -54,7 +54,13 @@ class LLMResponse:
 
 
 class LLMProvider(ABC):
-    """Abstract strategy interface that every LLM backend implements."""
+    """Abstract strategy interface that every LLM backend implements.
+
+    Attributes:
+        model: Identifier of the model requests are sent to (e.g. ``"qwen2.5-coder:1.5b"``).
+    """
+
+    model: str
 
     @property
     @abstractmethod

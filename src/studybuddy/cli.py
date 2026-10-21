@@ -23,9 +23,33 @@ console = Console()
 app = typer.Typer(
     name="studybuddy",
     help="Study Buddy — a Socratic AI coding tutor that debugs your code and teaches as it goes.",
-    no_args_is_help=True,
     add_completion=False,
 )
+
+PROVIDER_OPTION = typer.Option(
+    None,
+    "--provider",
+    "-p",
+    help="LLM to use: ollama (free, local), anthropic, gemini, or mock. Auto-detected if omitted.",
+)
+MODEL_OPTION = typer.Option(
+    None,
+    "--model",
+    "-m",
+    help="Model name for the chosen provider (e.g. llama3.2:1b). You can also switch in the "
+    "chat with /model.",
+)
+
+
+@app.callback(invoke_without_command=True)
+def main(
+    ctx: typer.Context,
+    provider: str | None = PROVIDER_OPTION,
+    model: str | None = MODEL_OPTION,
+) -> None:
+    """Run with no command to start chatting in the current folder."""
+    if ctx.invoked_subcommand is None:
+        chat(provider, model)
 
 
 @app.command()
@@ -46,30 +70,16 @@ def init() -> None:
 
 @app.command()
 def chat(
-    provider: str | None = typer.Option(
-        None,
-        "--provider",
-        "-p",
-        help="LLM to use: anthropic, gemini, ollama, or mock. Auto-detected if omitted.",
-    ),
-    model: str | None = typer.Option(
-        None,
-        "--model",
-        "-m",
-        help="Model name for the chosen provider (e.g. llama3.2:1b). Provider default if omitted.",
-    ),
+    provider: str | None = PROVIDER_OPTION,
+    model: str | None = MODEL_OPTION,
 ) -> None:
-    """Start an interactive tutoring session in the current project."""
-    root = find_project_root(Path.cwd())
-    if root is None:
-        console.print(
-            "[bold red]Error:[/bold red] No Study Buddy project found in this directory "
-            "or any parent.\nRun [bold cyan]studybuddy init[/bold cyan] first."
-        )
-        raise typer.Exit(code=1)
+    """Start an interactive tutoring session (same as running studybuddy on its own)."""
+    # DESIGN: no init needed; files are limited to the nearest Study Buddy project, or else
+    # to the folder the chat was started in.
+    root = find_project_root(Path.cwd()) or Path.cwd()
     try:
         llm = get_provider(provider, model)
     except (ProviderError, ValueError) as exc:
         console.print(f"[bold red]Error:[/bold red] {escape(str(exc))}", highlight=False)
         raise typer.Exit(code=1) from None
-    run_repl(console, Agent(llm))
+    run_repl(console, Agent(llm, root))

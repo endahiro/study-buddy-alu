@@ -30,6 +30,7 @@ class MockProvider(LLMProvider):
         """
         # DESIGN: delay is injectable so tests can set it to 0 and run instantly.
         self.delay = delay
+        self.model = "mock"
 
     @property
     def name(self) -> str:

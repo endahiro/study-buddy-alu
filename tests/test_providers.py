@@ -5,6 +5,7 @@ from types import SimpleNamespace
 from typing import Any
 
 import anthropic
+import httpx
 import httpx2
 import ollama
 import pytest
@@ -13,7 +14,13 @@ from google.genai import errors as genai_errors
 from studybuddy.llm.anthropic import FALLBACK_BETA, AnthropicProvider
 from studybuddy.llm.base import Message, ProviderError
 from studybuddy.llm.gemini import GeminiProvider
-from studybuddy.llm.ollama import OllamaProvider
+from studybuddy.llm.ollama import (
+    MAX_REPLY_TOKENS,
+    RECOMMENDED_MODELS,
+    OllamaProvider,
+    installed_models,
+    pull_model,
+)
 
 CONVERSATION = [
     Message("system", "Be Socratic."),
@@ -168,9 +175,28 @@ def test_gemini_sdk_errors_are_wrapped() -> None:
 
 
 class FakeOllamaClient:
-    def __init__(self, error: Exception | None = None) -> None:
+    def __init__(
+        self, error: Exception | None = None, pulled: tuple[str, ...] = ("llama3.2:1b",)
+    ) -> None:
         self.calls: list[dict[str, Any]] = []
         self.error = error
+        self.pulled = pulled
+
+    def pull(self, name: str, stream: bool) -> Any:
+        if self.error:
+            raise self.error
+        return iter(
+            [
+                SimpleNamespace(total=None, completed=None),
+                SimpleNamespace(total=100, completed=40),
+                SimpleNamespace(total=100, completed=100),
+            ]
+        )
+
+    def list(self) -> Any:
+        if self.error:
+            raise self.error
+        return SimpleNamespace(models=[SimpleNamespace(model=name) for name in self.pulled])
 
     def chat(self, **params: Any) -> Any:
         self.calls.append(params)
@@ -205,9 +231,64 @@ def test_ollama_stream_skips_empty_chunks() -> None:
 
 
 @pytest.mark.parametrize(
-    "error", [ConnectionError("refused"), ollama.ResponseError("model not found", 404)]
+    "error",
+    [
+        ConnectionError("refused"),
+        ollama.ResponseError("model not found", 404),
+        httpx.RemoteProtocolError("Server disconnected without sending a response."),
+    ],
 )
 def test_ollama_errors_are_wrapped(error: Exception) -> None:
-    provider = OllamaProvider(client=FakeOllamaClient(error=error))  # type: ignore[arg-type]
+    provider = OllamaProvider(model="llama3.2:1b", client=FakeOllamaClient(error=error))  # type: ignore[arg-type]
     with pytest.raises(ProviderError, match="Ollama request failed"):
         provider.complete(CONVERSATION)
+
+
+def test_ollama_sends_default_options() -> None:
+    fake = FakeOllamaClient()
+    OllamaProvider(client=fake).complete(CONVERSATION)  # type: ignore[arg-type]
+    OllamaProvider(client=fake).complete(CONVERSATION, options={"temperature": 1.0})  # type: ignore[arg-type]
+    assert fake.calls[0]["options"] == {"temperature": 0.5, "num_predict": MAX_REPLY_TOKENS}
+    assert fake.calls[1]["options"]["temperature"] == 1.0
+
+
+def test_ollama_picks_best_pulled_recommended_model() -> None:
+    fake = FakeOllamaClient(pulled=("mistral:7b", "llama3.2:1b", RECOMMENDED_MODELS[0]))
+    provider = OllamaProvider(client=fake)  # type: ignore[arg-type]
+    provider.complete(CONVERSATION)
+    assert provider.model == RECOMMENDED_MODELS[0]
+    assert fake.calls[0]["model"] == RECOMMENDED_MODELS[0]
+
+
+def test_ollama_explicit_model_skips_lookup() -> None:
+    fake = FakeOllamaClient(pulled=())
+    provider = OllamaProvider(model="mistral:7b", client=fake)  # type: ignore[arg-type]
+    provider.complete(CONVERSATION)
+    assert fake.calls[0]["model"] == "mistral:7b"
+
+
+def test_ollama_without_recommended_model_explains_how_to_pull() -> None:
+    provider = OllamaProvider(client=FakeOllamaClient(pulled=("mistral:7b",)))  # type: ignore[arg-type]
+    with pytest.raises(ProviderError, match=f"ollama pull {RECOMMENDED_MODELS[0]}"):
+        provider.complete(CONVERSATION)
+
+
+def test_installed_models_and_pull_progress() -> None:
+    fake = FakeOllamaClient(pulled=("a:1b", "b:2b"))
+    assert installed_models(fake) == ["a:1b", "b:2b"]  # type: ignore[arg-type]
+    assert list(pull_model("a:1b", fake)) == [0.4, 1.0]  # type: ignore[arg-type]
+
+
+def test_unreachable_ollama_says_how_to_start_it() -> None:
+    fake = FakeOllamaClient(error=ConnectionError("refused"))
+    with pytest.raises(ProviderError, match="ollama serve"):
+        installed_models(fake)  # type: ignore[arg-type]
+    with pytest.raises(ProviderError, match="Couldn't download x"):
+        list(pull_model("x", fake))  # type: ignore[arg-type]
+
+
+def test_ollama_server_dying_mid_reply_suggests_a_smaller_model() -> None:
+    error = httpx.RemoteProtocolError("Server disconnected without sending a response.")
+    provider = OllamaProvider(model="big", client=FakeOllamaClient(error=error))  # type: ignore[arg-type]
+    with pytest.raises(ProviderError, match="run out of memory"):
+        list(provider.stream(CONVERSATION))

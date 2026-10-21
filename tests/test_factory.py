@@ -128,3 +128,24 @@ def test_resolution_order_is_documented() -> None:
     ]
     positions = [doc.index(marker) for marker in markers]
     assert positions == sorted(positions), "resolution order in docstring is out of order"
+
+
+def test_list_free_models_marks_installed_and_adds_extras(monkeypatch: pytest.MonkeyPatch) -> None:
+    from studybuddy.llm import ollama as ollama_provider
+
+    monkeypatch.setattr(ollama_provider, "installed_models", lambda: ["llama3.2:1b", "mistral:7b"])
+    models = factory.list_free_models()
+    names = [m.name for m in models]
+    assert names[: len(ollama_provider.FREE_MODELS)] == list(ollama_provider.FREE_MODELS)
+    assert names[-1] == "mistral:7b"
+    assert {m.name for m in models if m.installed} == {"llama3.2:1b", "mistral:7b"}
+    assert all(m.min_ram_gb > 0 for m in models[: len(ollama_provider.FREE_MODELS)])
+    assert models[-1].min_ram_gb == 0  # unknown for models we haven't measured
+
+
+def test_free_model_helpers_explain_missing_sdk(monkeypatch: pytest.MonkeyPatch) -> None:
+    _block_import(monkeypatch, "studybuddy.llm.ollama")
+    with pytest.raises(ProviderError, match="uv sync --extra ollama"):
+        factory.list_free_models()
+    with pytest.raises(ProviderError, match="uv sync --extra ollama"):
+        factory.download_model("x")
