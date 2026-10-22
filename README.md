@@ -33,7 +33,7 @@ Ask any coding question; follow-ups remember the conversation. Commands:
 
 | Command | What it does |
 | --- | --- |
-| `/model` | List the free models; `/model 2` (or `/model <name>`) switches, downloading if needed |
+| `/model` | List the free models and pick one by number (downloads it if needed) |
 | `/read <file>` | Share a file; your next message is about it |
 | `/fix <file> [what's wrong]` | Explain the bug, show a diff, and apply it only if you say yes |
 | `/reset` | Start a fresh conversation |

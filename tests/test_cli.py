@@ -229,6 +229,33 @@ def test_model_switches_by_number_and_keeps_chatting(
     assert "hi from the new model" in result.output
 
 
+def test_model_list_then_number_switches(in_tmp: Path, free_models: dict[str, object]) -> None:
+    result = runner.invoke(app, ["-p", "mock"], input="/model\n2\nhello\nexit\n")
+    assert result.exit_code == 0, result.output
+    assert free_models["switched"] == [("ollama", "llama3.2:1b")]
+    assert "hi from the new model" in result.output
+
+
+def test_model_list_enter_keeps_current(in_tmp: Path, free_models: dict[str, object]) -> None:
+    result = runner.invoke(app, ["-p", "mock"], input="/model\n\nexit\n")
+    assert "Kept the current model" in result.output
+    assert free_models["switched"] == []
+
+
+def test_model_list_rejects_non_model_answer(in_tmp: Path, free_models: dict[str, object]) -> None:
+    result = runner.invoke(app, ["-p", "mock"], input="/model\nwhat is java\nexit\n")
+    assert "There is no model what is java" in result.output
+    assert free_models["downloaded"] == []
+    assert free_models["switched"] == []
+
+
+def test_model_number_in_angle_brackets_works(in_tmp: Path, free_models: dict[str, object]) -> None:
+    result = runner.invoke(app, ["-p", "mock"], input="/model <2>\nexit\n")
+    assert "Now using llama3.2:1b" in result.output
+    assert free_models["switched"] == [("ollama", "llama3.2:1b")]
+    assert free_models["downloaded"] == []
+
+
 def test_model_downloads_after_approval(in_tmp: Path, free_models: dict[str, object]) -> None:
     result = runner.invoke(app, ["-p", "mock"], input="/model qwen3:1.7b\ny\nexit\n")
     assert result.exit_code == 0, result.output

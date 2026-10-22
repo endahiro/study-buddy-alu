@@ -27,7 +27,7 @@ HELP_TEXT = """\
 [bold]Ask any coding question[/bold], or use a command:
   [cyan]/read <file>[/cyan]                 share a file; your next message is about it
   [cyan]/fix <file> [what's wrong][/cyan]   find and fix bugs, then apply after you approve
-  [cyan]/model[/cyan]                       list free models; [cyan]/model 2[/cyan] switches to #2
+  [cyan]/model[/cyan]                       list free models and pick one by number
   [cyan]/reset[/cyan]                       start a fresh conversation
   [cyan]/help[/cyan]                        show this help
   [cyan]exit[/cyan]                         leave"""
@@ -64,12 +64,13 @@ def current_model(agent: Agent) -> str | None:
         return None
 
 
-def show_models(console: Console, agent: Agent) -> None:
-    """Print the numbered list of free models and which one is in use."""
+def show_models(console: Console, agent: Agent) -> list[FreeModel]:
+    """Print the numbered list of free models and which one is in use, and return it."""
     active = current_model(agent) if agent.llm.name == "ollama" else None
     ram = total_ram_gb()
     table = Table(box=None, padding=(0, 2), show_header=False)
-    for number, model in enumerate(list_free_models(), start=1):
+    models = list_free_models()
+    for number, model in enumerate(models, start=1):
         if model.name == active:
             status = "[bold green]● in use[/bold green]"
         elif too_big(model, ram):
@@ -81,7 +82,27 @@ def show_models(console: Console, agent: Agent) -> None:
         table.add_row(f"[cyan]{number}[/cyan]", escape(model.name), status, escape(model.note))
     console.print("[bold]Free models[/bold] (run on your computer, no key needed):")
     console.print(table)
-    console.print("[dim]Switch with /model <number or name>.[/dim]\n")
+    return models
+
+
+def pick_model(console: Console, agent: Agent) -> None:
+    """List the free models and switch to the one the student picks; Enter keeps the current."""
+    models = show_models(console, agent)
+    try:
+        choice = clean_choice(console.input("Pick a number (Enter to keep the current model): "))
+    except (KeyboardInterrupt, EOFError):
+        choice = ""
+    if not choice or choice.lower() in EXIT_COMMANDS:
+        console.print("[dim]Kept the current model.[/dim]\n")
+    elif choice.isdigit() or any(model.name == choice for model in models):
+        switch_model(console, agent, choice)
+    else:
+        console.print(f"[yellow]There is no model {escape(choice)}.[/yellow]\n")
+
+
+def clean_choice(choice: str) -> str:
+    """Strip spaces and the brackets/quotes students copy from usage hints, e.g. ``<2>``."""
+    return choice.strip().strip("<>[]\"'").strip()
 
 
 def find_model(models: list[FreeModel], choice: str) -> FreeModel:
@@ -176,14 +197,15 @@ def handle_command(console: Console, agent: Agent, line: str) -> None:
     """Run a ``/command`` line."""
     command, _, rest = line.partition(" ")
     target, _, problem = rest.strip().partition(" ")
+    target = clean_choice(target)
     command = command.lower()
     if command == "/help":
         console.print(HELP_TEXT + "\n")
     elif command == "/model":
-        if rest.strip():
-            switch_model(console, agent, rest.strip())
+        if clean_choice(rest):
+            switch_model(console, agent, clean_choice(rest))
         else:
-            show_models(console, agent)
+            pick_model(console, agent)
     elif command == "/reset":
         agent.reset()
         console.print("[dim]Started a fresh conversation.[/dim]\n")

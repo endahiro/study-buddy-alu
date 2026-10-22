@@ -27,7 +27,7 @@ FREE_MODELS: dict[str, tuple[str, float]] = {
     "qwen2.5-coder:1.5b": ("best all-round, accurate answers (1 GB download)", 3),
     "llama3.2:1b": ("fast, but makes factual mistakes (1.3 GB)", 3),
     "qwen3:1.7b": ("asks you follow-up questions, slower (1.4 GB)", 3),
-    "qwen2.5-coder:3b": ("a bit more careful, ~3x slower (1.9 GB)", 6),
+    "qwen2.5-coder:3b": ("a bit more careful, ~3x slower (1.9 GB)", 4.5),
 }
 # When no model is requested, the first of these already pulled on the server is used.
 RECOMMENDED_MODELS = tuple(FREE_MODELS)
