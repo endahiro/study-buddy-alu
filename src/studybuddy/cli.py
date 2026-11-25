@@ -9,7 +9,8 @@ import typer
 from studybuddy import ui
 from studybuddy.agent import Agent
 from studybuddy.chat import run_repl
-from studybuddy.llm import ProviderError, get_provider
+from studybuddy.knowledge import Notes
+from studybuddy.llm import ProviderError, embed_texts, get_provider
 from studybuddy.project import (
     PROJECT_DIR_NAME,
     ProjectAlreadyInitializedError,
@@ -77,4 +78,4 @@ def chat(
     except (ProviderError, ValueError) as exc:
         ui.error(console, str(exc))
         raise typer.Exit(code=1) from None
-    run_repl(console, Agent(llm, root))
+    run_repl(console, Agent(llm, root, Notes(root, embed_texts)))

@@ -36,9 +36,26 @@ Ask any coding question; follow-ups remember the conversation. Commands:
 | `/model` | List the free models and pick one by number (downloads it if needed) |
 | `/read <file>` | Share a file; your next message is about it |
 | `/fix <file> [what's wrong]` | Explain the bug, show a diff, and apply it only if you say yes |
+| `/learn <file or folder>` | Learn your notes; later answers use the relevant parts |
+| `/learn` | List the files Study Buddy has learned |
+| `/forget` | Forget all learned notes |
 | `/reset` | Start a fresh conversation |
 | `/help` | List commands |
 | `exit` | Leave (or press Ctrl+C) |
+
+## Your notes (RAG)
+
+`/learn notes` reads the Markdown, text and code files in `notes/`, splits them into
+passages, and saves a search index in `.studybuddy/notes.json`. Before each question, the
+passages closest in meaning to it are sent along, so the tutor can answer from your own
+course material ("when is the lab 7 deadline?"). A line like
+`▌ From your notes: notes/week7.md:1-12` shows which ones were used; questions unrelated to
+your notes are answered as usual.
+
+- It uses the free `nomic-embed-text` model (274 MB) through Ollama, even when you chat with
+  another provider. `/learn` offers to download it the first time.
+- Edited a file? `/learn` it again to refresh it.
+- PDFs and Word files aren't read yet; export them to text or Markdown first.
 
 ## Free models
 

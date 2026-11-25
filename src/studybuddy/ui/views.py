@@ -36,6 +36,9 @@ PROMPT = "[sb.prompt]studybuddy>[/sb.prompt] "
 COMMANDS = (
     ("/read <file>", "share a file; your next message is about it"),
     ("/fix <file> [what's wrong]", "find and fix bugs, then apply after you approve"),
+    ("/learn <file|folder>", "learn your notes; answers will use them"),
+    ("/learn", "list what Study Buddy has learned"),
+    ("/forget", "forget all learned notes"),
     ("/model", "list free models and pick one by number"),
     ("/reset", "start a fresh conversation"),
     ("/help", "show this help"),
@@ -125,7 +128,12 @@ WELCOME_MIN_WIDTH = 52
 
 
 def welcome(
-    console: Console, model: str | None, provider: str, problem: str | None, folder: Path
+    console: Console,
+    model: str | None,
+    provider: str,
+    problem: str | None,
+    folder: Path,
+    notes: int | None = None,
 ) -> None:
     """Print the front screen: wordmark card, example questions, and key commands.
 
@@ -137,6 +145,7 @@ def welcome(
         provider: The provider name, e.g. ``"ollama"``.
         problem: Why the model couldn't be determined, if it couldn't.
         folder: The folder whose files ``/read`` and ``/fix`` may open.
+        notes: How many files ``/learn`` has learned; None hides the row.
     """
     utf8 = console.encoding.lower().startswith("utf")
     if not console.is_terminal or not utf8 or console.width < WELCOME_MIN_WIDTH:
@@ -155,6 +164,14 @@ def welcome(
         status = Text.assemble(("✗ ", "sb.error"), (problem or "No model", "sb.error"))
     card.add_row(status)
     card.add_row(Text.assemble(("Files  ", "sb.muted"), (_short_path(folder), "sb.file")))
+    if notes:
+        card.add_row(Text.assemble(("Notes  ", "sb.muted"), (_count(notes, "file"), "sb.file")))
+    elif notes is not None:
+        card.add_row(
+            Text.assemble(
+                ("Notes  ", "sb.muted"), ("none yet · ", "sb.muted"), ("/learn", "sb.accent")
+            )
+        )
     console.print()
     console.print(
         Constrain(
@@ -291,14 +308,19 @@ def ask_model_number(console: Console) -> str:
 
 
 def download_progress(console: Console, name: str, fractions: Iterable[float]) -> None:
-    """Show a progress bar for ``name`` while ``fractions`` (0 to 1) arrive."""
+    """Show a progress bar for downloading ``name`` while ``fractions`` (0 to 1) arrive."""
+    progress_bar(console, "Downloading", name, fractions)
+
+
+def progress_bar(console: Console, verb: str, what: str, fractions: Iterable[float]) -> None:
+    """Show ``verb what`` with a progress bar while ``fractions`` (0 to 1) arrive."""
     columns = (
-        TextColumn("[sb.muted]Downloading[/] {task.description}"),
+        TextColumn(f"[sb.muted]{escape(verb)}[/] {{task.description}}"),
         BarColumn(bar_width=30),
         TaskProgressColumn(),
     )
     with Progress(*columns, console=console, transient=True) as progress:
-        task = progress.add_task(escape(name), total=1.0)
+        task = progress.add_task(escape(what), total=1.0)
         for fraction in fractions:
             progress.update(task, completed=fraction)
 
@@ -360,3 +382,62 @@ def confirm(console: Console, question: str) -> bool:
     except (KeyboardInterrupt, EOFError):
         console.print()
         return False
+
+
+# --- Notes (RAG) ----------------------------------------------------------------------
+
+# Learned files listed by a bare /learn before the rest are summarised as "+N more".
+MAX_LISTED_NOTES = 15
+
+
+def _count(n: int, noun: str) -> str:
+    return f"{n} {noun}" + ("" if n == 1 else "s")
+
+
+def learned(console: Console, files: int, passages: int) -> None:
+    """Confirm a ``/learn``."""
+    success(
+        console,
+        f"Learned {_count(files, 'file')} ({_count(passages, 'passage')}). "
+        "Your questions will use them from now on.",
+    )
+
+
+def notes_list(console: Console, files: list[str]) -> None:
+    """List the learned files, or explain how to learn some."""
+    if not files:
+        console.print(Text("No notes learned yet.", "bold"))
+        console.print(
+            Text.assemble(
+                ("Type ", "sb.muted"),
+                ("/learn <file or folder>", "sb.accent"),
+                (" (for example /learn notes) and your questions will use them.", "sb.muted"),
+            )
+        )
+        console.print()
+        return
+    console.print(Text(f"Learned notes · {_count(len(files), 'file')}", "bold"))
+    for name in files[:MAX_LISTED_NOTES]:
+        console.print(Text.assemble(("  ▌ ", "sb.file.bar"), (name, "sb.file")))
+    if len(files) > MAX_LISTED_NOTES:
+        console.print(Text(f"  + {len(files) - MAX_LISTED_NOTES} more", "sb.muted"))
+    console.print(
+        Text.assemble(
+            ("/learn <path>", "sb.accent"),
+            (" to add or refresh · ", "sb.muted"),
+            ("/forget", "sb.accent"),
+            (" to clear", "sb.muted"),
+        )
+    )
+    console.print()
+
+
+def notes_used(console: Console, labels: list[str]) -> None:
+    """Show which parts of the student's notes go with the question."""
+    text = Text.assemble(("▌ ", "sb.file.bar"), ("From your notes: ", "sb.muted"))
+    for index, label in enumerate(labels):
+        if index:
+            text.append(" · ", "sb.muted")
+        text.append(label, "sb.file")
+    console.print(text)
+    console.print()

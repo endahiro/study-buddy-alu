@@ -15,7 +15,17 @@ from rich.markup import escape
 
 from studybuddy import ui
 from studybuddy.agent import Agent
-from studybuddy.llm import FreeModel, ProviderError, download_model, get_provider, list_free_models
+from studybuddy.knowledge import Hit
+from studybuddy.llm import (
+    EMBED_MODEL,
+    EMBED_MODEL_SIZE,
+    FreeModel,
+    ProviderError,
+    download_model,
+    get_provider,
+    list_free_models,
+    model_installed,
+)
 from studybuddy.workspace import WorkspaceError, propose_fix
 
 EXIT_COMMANDS = frozenset({"exit", "quit"})
@@ -23,10 +33,11 @@ EXIT_COMMANDS = frozenset({"exit", "quit"})
 
 def print_banner(console: Console, agent: Agent) -> None:
     """Print the welcome screen showing which model is active and where files come from."""
+    notes = len(agent.notes.files()) if agent.notes is not None else None
     try:
-        ui.welcome(console, agent.llm.model, agent.llm.name, None, agent.root)
+        ui.welcome(console, agent.llm.model, agent.llm.name, None, agent.root, notes)
     except ProviderError as exc:
-        ui.welcome(console, None, agent.llm.name, str(exc), agent.root)
+        ui.welcome(console, None, agent.llm.name, str(exc), agent.root, notes)
 
 
 def total_ram_gb() -> float | None:
@@ -131,8 +142,46 @@ def waiting_for(agent: Agent) -> str:
 
 
 def stream_reply(console: Console, agent: Agent, user_input: str) -> str:
-    """Render the agent's reply to ``user_input`` as it streams in and return it."""
-    return ui.render_reply(console, agent.stream_response(user_input), waiting_for(agent))
+    """Render the agent's reply to ``user_input``, using relevant notes, and return it."""
+    hits = recall(console, agent, user_input)
+    return ui.render_reply(console, agent.stream_response(user_input, hits), waiting_for(agent))
+
+
+def recall(console: Console, agent: Agent, question: str) -> list[Hit]:
+    """Return the notes relevant to ``question`` and show which; [] if search fails."""
+    try:
+        hits = agent.recall(question)
+    except ProviderError as exc:
+        # DESIGN: notes are a bonus; if they can't be searched, still answer the question.
+        ui.warn(console, f"Couldn't search your notes, so answering without them. {exc}")
+        return []
+    if hits:
+        ui.notes_used(console, [hit.chunk.label for hit in hits])
+    return hits
+
+
+def learn(console: Console, agent: Agent, target: str) -> None:
+    """Learn the text files at ``target``; with no target, list what was learned."""
+    notes = agent.notes
+    if notes is None:
+        ui.warn(console, "Notes aren't available in this session.")
+        return
+    if not target:
+        ui.notes_list(console, notes.files())
+        return
+    files = notes.find_files(target)
+    if not model_installed(EMBED_MODEL):
+        if not ui.confirm(
+            console,
+            f"Learning notes needs the free {EMBED_MODEL} model ({EMBED_MODEL_SIZE}), "
+            "which runs on your computer. Download it?",
+        ):
+            ui.note(console, "Didn't learn anything.")
+            return
+        ui.download_progress(console, EMBED_MODEL, download_model(EMBED_MODEL))
+    ui.progress_bar(console, "Learning", f"{len(files)} file(s)", notes.learn(files))
+    sources = {file.relative_to(notes.root).as_posix() for file in files}
+    ui.learned(console, len(files), sum(chunk.source in sources for chunk in notes.chunks))
 
 
 def run_fix(console: Console, agent: Agent, relative: str, problem: str) -> None:
@@ -165,6 +214,12 @@ def handle_command(console: Console, agent: Agent, line: str) -> None:
             switch_model(console, agent, clean_choice(rest))
         else:
             pick_model(console, agent)
+    elif command == "/learn":
+        learn(console, agent, clean_choice(rest))
+    elif command == "/forget":
+        if agent.notes is not None:
+            agent.notes.forget()
+        ui.note(console, "Forgot all learned notes.")
     elif command == "/reset":
         agent.reset()
         ui.note(console, "Started a fresh conversation.")
