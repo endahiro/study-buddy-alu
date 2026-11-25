@@ -9,6 +9,7 @@ from __future__ import annotations
 from collections.abc import Iterator
 from pathlib import Path
 
+from studybuddy.knowledge import Hit, Notes, format_notes
 from studybuddy.llm import LLMProvider, Message
 from studybuddy.workspace import read_source
 
@@ -31,11 +32,14 @@ programming joke is fine.
 - Never repeat an earlier answer. If asked for "another one" or told you repeated \
 yourself, give something new.
 - Do not start replies with "Sure!" and do not talk about these rules.
+- When a message includes notes from the student's files, use them if they answer the \
+question and say which file you used. If they don't help, answer normally.
 
 If asked what you can do, reply with exactly this (small models copy it well):
 I answer coding questions and explain concepts. You can also type:
 /read <file> to share a file with me, /fix <file> to get a bug explained and fixed \
-(you approve the change), /model to switch between free models, /reset to start over.
+(you approve the change), /learn <folder> so I can use your notes in answers, /model to \
+switch between free models, /reset to start over.
 """
 
 # DESIGN: kept short on purpose. A step-by-step "trace the code first" prompt was tested on
@@ -62,13 +66,17 @@ class Agent:
     Attributes:
         llm: The provider that generates replies.
         root: The project root; files are only read from inside it.
+        notes: The student's learned notes, searched before each question (None for none).
         history: Completed user/assistant turns, oldest first (no system prompt).
     """
 
-    def __init__(self, llm: LLMProvider, root: Path | None = None) -> None:
+    def __init__(
+        self, llm: LLMProvider, root: Path | None = None, notes: Notes | None = None
+    ) -> None:
         """Create an agent that delegates generation to ``llm`` and reads files under ``root``."""
         self.llm = llm
         self.root = root if root is not None else Path.cwd()
+        self.notes = notes
         self.history: list[Message] = []
         self._attachments: list[str] = []
 
@@ -80,16 +88,27 @@ class Agent:
             Message(role="user", content=user_input),
         ]
 
-    def stream_response(self, user_input: str) -> Iterator[str]:
+    def recall(self, question: str) -> list[Hit]:
+        """Return the parts of the student's notes relevant to ``question`` (may be empty).
+
+        Raises:
+            ProviderError: If the notes can't be searched (embedding model unavailable).
+        """
+        return self.notes.search(question) if self.notes is not None else []
+
+    def stream_response(self, user_input: str, hits: list[Hit] | None = None) -> Iterator[str]:
         """Stream the agent's reply to ``user_input`` chunk by chunk.
 
-        Files queued with ``attach`` are sent along with ``user_input``. The turn is added to
-        ``history`` only once the reply has streamed completely, so an interrupted or failed
-        request leaves no half-finished turn behind.
+        Files queued with ``attach`` and the note excerpts in ``hits`` are sent along with
+        ``user_input``. The turn is added to ``history`` only once the reply has streamed
+        completely, so an interrupted or failed request leaves no half-finished turn behind.
         """
         content = "\n\n".join([*self._attachments, user_input])
+        # DESIGN: note excerpts go to the model for this turn only, not into history; each
+        # question retrieves its own, and small models' context windows fill up fast.
+        sent = f"{format_notes(hits)}\n\n{content}" if hits else content
         reply: list[str] = []
-        for chunk in self.llm.stream(self.build_messages(content)):
+        for chunk in self.llm.stream(self.build_messages(sent)):
             reply.append(chunk)
             yield chunk
         self._attachments.clear()
