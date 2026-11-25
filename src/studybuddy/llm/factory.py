@@ -39,6 +39,13 @@ class FreeModel:
 OLLAMA_SDK_HINT = "Free local models need the ollama SDK. Install it with: uv sync --extra ollama"
 
 
+# Free local model that turns text into vectors for searching the student's notes.
+# DESIGN: nomic-embed-text is small (274 MB, runs fine next to a 1.5b chat model on 4 GB),
+# handles long chunks (2k tokens), and works for prose and code alike.
+EMBED_MODEL = "nomic-embed-text"
+EMBED_MODEL_SIZE = "274 MB"
+
+
 def list_free_models() -> list[FreeModel]:
     """Return the recommended free models, then any other downloaded ones.
 
@@ -162,3 +169,30 @@ def get_provider(preferred: str | None = None, model: str | None = None) -> LLMP
 
     # 4. Fallback.
     return MockProvider()
+
+
+def embed_texts(texts: list[str]) -> list[list[float]]:
+    """Embed ``texts`` with the free local ``EMBED_MODEL``, one vector per text.
+
+    Raises:
+        ProviderError: If the SDK is missing, Ollama is down, or the model isn't downloaded.
+    """
+    try:
+        from studybuddy.llm.ollama import embed
+    except ImportError as exc:
+        raise ProviderError(OLLAMA_SDK_HINT) from exc
+    return embed(texts, EMBED_MODEL)
+
+
+def model_installed(name: str) -> bool:
+    """Return True if the free local model ``name`` is downloaded.
+
+    Raises:
+        ProviderError: If the SDK is missing or the Ollama server can't be reached.
+    """
+    try:
+        from studybuddy.llm.ollama import installed_models
+    except ImportError as exc:
+        raise ProviderError(OLLAMA_SDK_HINT) from exc
+    # Ollama lists untagged pulls as "name:latest".
+    return any(model in (name, f"{name}:latest") for model in installed_models())

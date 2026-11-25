@@ -31,3 +31,19 @@ class ScriptedProvider(LLMProvider):
         middle = len(reply) // 2
         yield reply[:middle]
         yield reply[middle:]
+
+
+# Words the fake embedder knows; each becomes one dimension of the vector.
+VOCABULARY = ("recursion", "base", "case", "stack", "loop", "list", "rag", "embedding", "vector")
+
+
+def keyword_embed(texts: list[str]) -> list[list[float]]:
+    """Fake embedder: counts vocabulary words, so texts sharing words get similar vectors.
+
+    Every vector gets a small constant so no text embeds to all zeros.
+    """
+    vectors = []
+    for text in texts:
+        words = text.lower().replace(".", " ").replace("?", " ").split()
+        vectors.append([float(words.count(word)) for word in VOCABULARY] + [0.1])
+    return vectors
