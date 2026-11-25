@@ -1,102 +1,183 @@
 # Study Buddy
 
-A terminal-native AI coding agent that debugs student code **and teaches the underlying
-concepts** as it goes — grounded in your own project and course materials.
+**A free AI coding tutor that runs in your terminal.**
 
-Study Buddy is Socratic-first: it asks questions, surfaces concepts, and walks you through
-the fix instead of silently applying it. Free by default (local Ollama or Gemini free tier),
-bring-your-own-key for paid providers.
+Ask it programming questions, let it explain and fix the bugs in your files, and teach it
+your own course notes so its answers use them. Everything runs on your own computer, with
+no account, no API key and no cost.
 
-> Status: early. A simple tutor agent answers coding questions and fixes files with your
-> approval, on Anthropic, Gemini, or Ollama.
-
-## Quickstart
-
-One-time install (free, no API key; needs [Ollama](https://ollama.com) running):
-
-```bash
-uv tool install --editable '.[ollama]'   # run from this repo; puts `studybuddy` on your PATH
+```
+╭───────────────────────────────────────────────╮
+│                                               │
+│   █▀▀ ▀█▀ █ █ █▀▄ █ █   █▀▄ █ █ █▀▄ █▀▄ █ █   │
+│   ▀▀█  █  █ █ █ █ ▀▄▀   █▀▄ █ █ █ █ █ █ ▀▄▀   │
+│   ▀▀▀  ▀  ▀▀▀ ▀▀   ▀    ▀▀  ▀▀▀ ▀▀  ▀▀   ▀    │
+│                                               │
+│   Your coding tutor. Ask, read, fix, learn.   │
+│                                               │
+│   ● qwen2.5-coder:1.5b  ollama                │
+│   Files  ~/cs101                              │
+│   Notes  3 files                              │
+│                                               │
+╰───────────────────────────────────────────────╯
 ```
 
-Then, from any folder with code you want help with:
+## What it does
+
+| You want to… | Type |
+| --- | --- |
+| Ask a coding question or have a concept explained | just type your question |
+| Ask about one of your files | `/read main.py`, then your question |
+| Find and fix a bug | `/fix main.py` (it shows the change and only edits the file if you say yes) |
+| Have answers use your course notes | `/learn notes` (a file or a folder) |
+| See or clear what it learned | `/learn` · `/forget` |
+| Switch to another free model | `/model` |
+| Start a new conversation | `/reset` |
+| See all commands / quit | `/help` · `exit` |
+
+## Install
+
+You need a computer with **at least 4 GB of RAM** and **about 3 GB of free disk space**.
+Setup takes about 10 minutes, mostly downloading.
+
+### Step 1: Install Ollama (it runs the AI model on your computer)
+
+- **Windows or macOS:** download the installer from <https://ollama.com/download>, run
+  it, and keep the Ollama app running.
+- **Linux:** run
+  ```bash
+  curl -fsSL https://ollama.com/install.sh | sh
+  ```
+
+Check that it worked: `ollama --version` prints a version number.
+
+### Step 2: Download the AI model (about 1 GB)
 
 ```bash
+ollama pull qwen2.5-coder:1.5b
+```
+
+### Step 3: Install uv (it installs Study Buddy and the Python it needs)
+
+- **macOS or Linux:**
+  ```bash
+  curl -LsSf https://astral.sh/uv/install.sh | sh
+  ```
+- **Windows** (in PowerShell):
+  ```powershell
+  powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+  ```
+
+Then **close your terminal and open a new one**. You don't need to install Python
+yourself; uv takes care of it.
+
+### Step 4: Install Study Buddy
+
+```bash
+uv tool install https://github.com/endahiro/study-buddy-alu/releases/download/v1.0.0/studybuddy-1.0.0-py3-none-any.whl
+```
+
+If you then see a warning that the install folder is not on your `PATH`, run
+`uv tool update-shell`, then close and reopen your terminal.
+
+### Step 5: Run it
+
+Go to a folder with your code or notes and start it:
+
+```bash
+cd path/to/your/project
 studybuddy
 ```
 
-That's it: no `init` needed. Study Buddy starts on the best free model you have, and can
-only read and write files inside that folder (or the nearest parent with `.studybuddy/`).
+Study Buddy can only open files inside the folder you start it in.
 
-## In the chat
+## Try it
 
-Ask any coding question; follow-ups remember the conversation. Commands:
+```
+studybuddy> explain recursion with a small example
+studybuddy> /fix stats.py it crashes on an empty list
+studybuddy> /learn notes
+✓ Learned 3 files (3 passages). Your questions will use them from now on.
+studybuddy> when is the lab 7 deadline?
+▌ From your notes: notes/week7-llms.md:1-12
 
-| Command | What it does |
-| --- | --- |
-| `/model` | List the free models and pick one by number (downloads it if needed) |
-| `/read <file>` | Share a file; your next message is about it |
-| `/fix <file> [what's wrong]` | Explain the bug, show a diff, and apply it only if you say yes |
-| `/learn <file or folder>` | Learn your notes; later answers use the relevant parts |
-| `/learn` | List the files Study Buddy has learned |
-| `/forget` | Forget all learned notes |
-| `/reset` | Start a fresh conversation |
-| `/help` | List commands |
-| `exit` | Leave (or press Ctrl+C) |
+  The lab 7 deadline is Friday 14 November.
+```
 
-## Your notes (RAG)
+The first answer can take 10–30 seconds while the model loads; later ones are faster.
 
-`/learn notes` reads the Markdown, text and code files in `notes/`, splits them into
-passages, and saves a search index in `.studybuddy/notes.json`. Before each question, the
-passages closest in meaning to it are sent along, so the tutor can answer from your own
-course material ("when is the lab 7 deadline?"). A line like
-`▌ From your notes: notes/week7.md:1-12` shows which ones were used; questions unrelated to
-your notes are answered as usual.
+## Teaching it your notes
 
-- It uses the free `nomic-embed-text` model (274 MB) through Ollama, even when you chat with
-  another provider. `/learn` offers to download it the first time.
-- Edited a file? `/learn` it again to refresh it.
-- PDFs and Word files aren't read yet; export them to text or Markdown first.
+`/learn notes` reads the Markdown, text and code files in the `notes` folder. Each time you
+ask a question, it looks for the parts of your notes that match it and gives them to the
+model, and a `▌ From your notes:` line shows which ones it used. This technique is called
+RAG (retrieval-augmented generation).
+
+- The first `/learn` offers to download a small search model (`nomic-embed-text`, 274 MB).
+- What it learned is saved in a `.studybuddy` folder, so it remembers next time.
+- Changed a file? `/learn` it again. Want a clean slate? `/forget`.
+- PDFs and Word files aren't supported yet; save them as text or Markdown first.
 
 ## Free models
 
-These run on your own computer through Ollama, with no key and no internet once
-downloaded. `/model` shows which ones you have.
+Type `/model` in the chat to see these and switch by number. Ones you haven't downloaded
+are downloaded for you.
 
-| Model | Notes |
+| Model | Good for |
 | --- | --- |
-| `qwen2.5-coder:1.5b` | Default. Best all-round on a 4 GB RAM laptop; accurate answers |
-| `llama3.2:1b` | Fast, but makes basic factual mistakes |
+| `qwen2.5-coder:1.5b` | The default. Best all-round on a 4 GB laptop |
+| `llama3.2:1b` | Fastest, but makes more factual mistakes |
 | `qwen3:1.7b` | Asks you follow-up questions; slower |
-| `qwen2.5-coder:3b` | A bit more careful, ~3x slower; wants 8 GB+ RAM |
+| `qwen2.5-coder:3b` | A bit more careful, about 3x slower; needs 4.5 GB+ RAM |
 
-Picked by benchmarking coding questions and bug fixes on a CPU-only laptop. Small local
-models still get some fixes wrong, so always read the diff before you accept it.
+Small models are sometimes wrong, so always read a proposed fix before accepting it.
 
-## Other providers
+## Troubleshooting
 
-`studybuddy -p anthropic|gemini|ollama|mock` picks a provider, and `-m <model>` a model.
-Without `-p` it is auto-detected in this order: `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, an
-Ollama server on `localhost:11434`, then the offline mock.
+| Problem | Fix |
+| --- | --- |
+| `Can't reach Ollama` | Start the Ollama app (Windows/macOS) or run `ollama serve` (Linux) |
+| `No models downloaded yet` | Run `ollama pull qwen2.5-coder:1.5b`, or type `/model` and pick `1` |
+| `studybuddy: command not found` | Run `uv tool update-shell`, then open a new terminal |
+| `The model may have run out of memory` | Close other programs, or pick a smaller model with `/model` |
+| Answers are slow | Normal on a laptop without a graphics card; `llama3.2:1b` is the fastest |
 
-Each provider's SDK is an optional extra, so install only what you use:
+To uninstall: `uv tool uninstall studybuddy`.
+
+## Optional: cloud models
+
+If you have an API key, Study Buddy can use Anthropic or Google Gemini models instead of
+local ones:
 
 ```bash
-uv sync --extra anthropic    # Claude (ANTHROPIC_API_KEY or `ant auth login`)
-uv sync --extra gemini       # Gemini (GEMINI_API_KEY)
-uv sync --extra ollama       # local models via `ollama serve`
-uv sync --all-extras         # everything (needed to run the full test suite)
+uv tool install "studybuddy[anthropic,gemini] @ https://github.com/endahiro/study-buddy-alu/releases/download/v1.0.0/studybuddy-1.0.0-py3-none-any.whl"
+export GEMINI_API_KEY=your-key      # or ANTHROPIC_API_KEY
+studybuddy -p gemini                # or -p anthropic
 ```
 
-## Development
+Without `-p`, Study Buddy picks the first available in this order: an Anthropic key, a
+Gemini key, Ollama, then an offline demo mode.
+
+## For developers
 
 ```bash
-uv run pytest -v
-uv run ruff check .
-uv run mypy src/studybuddy/llm
+git clone https://github.com/endahiro/study-buddy-alu.git
+cd study-buddy-alu
+uv sync --all-extras          # installs everything, including test tools
+uv run studybuddy             # runs your local copy
+uv run pytest                 # 127 tests; no Ollama or API keys needed
+uv run ruff check . && uv run mypy src
 ```
 
-## Architecture
+How the code is organised (`src/studybuddy/`):
 
-All LLM access goes through the `LLMProvider` abstract base class in
-`src/studybuddy/llm/base.py` (strategy pattern). Nothing outside `studybuddy.llm` imports a
-concrete provider; use `studybuddy.llm.get_provider()` instead.
+| Part | What it does |
+| --- | --- |
+| `cli.py`, `chat.py` | The `studybuddy` command and the chat loop with its `/` commands |
+| `agent.py` | The tutor: conversation history, system prompt, `/read`, `/fix` and notes |
+| `knowledge.py` | `/learn`: splits notes into passages and finds the ones that match a question |
+| `llm/` | One interface for every AI provider (Ollama, Anthropic, Gemini, mock) |
+| `workspace.py` | Keeps file access inside the project folder and builds `/fix` diffs |
+| `ui/` | Everything printed to the terminal: welcome screen, streamed answers, diffs |
+
+Developed and tested on Linux (Ubuntu on WSL) with Python 3.10; needs Python 3.10 or newer (uv installs it for you).
