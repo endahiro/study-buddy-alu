@@ -18,3 +18,7 @@ dist/
 
 # Personal Claude Code settings
 .claude/settings.local.json
+
+# Locally installed agent skills (npx skills add ...)
+.claude/skills/
+skills-lock.json

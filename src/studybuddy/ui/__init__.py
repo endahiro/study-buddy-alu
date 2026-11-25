@@ -1,0 +1,51 @@
+"""Terminal rendering for Study Buddy: every line the app prints goes through here."""
+
+from studybuddy.ui.stream import render_reply
+from studybuddy.ui.theme import make_console
+from studybuddy.ui.views import (
+    PROMPT,
+    ModelRow,
+    ask_model_number,
+    banner,
+    confirm,
+    diff_panel,
+    download_progress,
+    error,
+    goodbye,
+    help_text,
+    init_done,
+    init_exists,
+    interrupted,
+    model_table,
+    note,
+    shared_file,
+    success,
+    switched_model,
+    warn,
+    welcome,
+)
+
+__all__ = [
+    "PROMPT",
+    "ModelRow",
+    "ask_model_number",
+    "banner",
+    "confirm",
+    "diff_panel",
+    "download_progress",
+    "error",
+    "goodbye",
+    "help_text",
+    "init_done",
+    "init_exists",
+    "interrupted",
+    "make_console",
+    "model_table",
+    "note",
+    "render_reply",
+    "shared_file",
+    "success",
+    "switched_model",
+    "warn",
+    "welcome",
+]

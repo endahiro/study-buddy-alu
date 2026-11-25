@@ -2,45 +2,31 @@
 
 Reads one line at a time, streams the agent's reply to the terminal as it arrives, and
 exits on ``exit``/``quit``, Ctrl+C, or Ctrl+D. Lines starting with ``/`` are commands.
+
+All output goes through ``studybuddy.ui``; this module only decides what to show.
 """
 
 from __future__ import annotations
 
 import os
-from collections.abc import Iterator
 
 from rich.console import Console
 from rich.markup import escape
-from rich.progress import BarColumn, Progress, TaskProgressColumn, TextColumn
-from rich.prompt import Confirm
-from rich.syntax import Syntax
-from rich.table import Table
 
+from studybuddy import ui
 from studybuddy.agent import Agent
 from studybuddy.llm import FreeModel, ProviderError, download_model, get_provider, list_free_models
 from studybuddy.workspace import WorkspaceError, propose_fix
 
-PROMPT = "[bold cyan]studybuddy>[/bold cyan] "
 EXIT_COMMANDS = frozenset({"exit", "quit"})
-
-HELP_TEXT = """\
-[bold]Ask any coding question[/bold], or use a command:
-  [cyan]/read <file>[/cyan]                 share a file; your next message is about it
-  [cyan]/fix <file> [what's wrong][/cyan]   find and fix bugs, then apply after you approve
-  [cyan]/model[/cyan]                       list free models and pick one by number
-  [cyan]/reset[/cyan]                       start a fresh conversation
-  [cyan]/help[/cyan]                        show this help
-  [cyan]exit[/cyan]                         leave"""
 
 
 def print_banner(console: Console, agent: Agent) -> None:
-    """Print the startup lines showing which model is active."""
-    console.print("[bold]Study Buddy[/bold] — ask a coding question, or type /help.")
+    """Print the welcome screen showing which model is active and where files come from."""
     try:
-        console.print(f"[dim]Model: {escape(agent.llm.model)} ({agent.llm.name})[/dim]")
+        ui.welcome(console, agent.llm.model, agent.llm.name, None, agent.root)
     except ProviderError as exc:
-        console.print(f"[bold red]Error:[/bold red] {escape(str(exc))}")
-    console.print("[dim]/model to switch models · exit or Ctrl+C to leave[/dim]\n")
+        ui.welcome(console, None, agent.llm.name, str(exc), agent.root)
 
 
 def total_ram_gb() -> float | None:
@@ -68,36 +54,32 @@ def show_models(console: Console, agent: Agent) -> list[FreeModel]:
     """Print the numbered list of free models and which one is in use, and return it."""
     active = current_model(agent) if agent.llm.name == "ollama" else None
     ram = total_ram_gb()
-    table = Table(box=None, padding=(0, 2), show_header=False)
     models = list_free_models()
-    for number, model in enumerate(models, start=1):
+    rows = []
+    for model in models:
         if model.name == active:
-            status = "[bold green]● in use[/bold green]"
+            status = "in_use"
         elif too_big(model, ram):
-            status = f"[yellow]needs {model.min_ram_gb:g} GB RAM[/yellow]"
+            status = "too_big"
         elif model.installed:
-            status = "[green]ready[/green]"
+            status = "ready"
         else:
-            status = "[dim]not downloaded[/dim]"
-        table.add_row(f"[cyan]{number}[/cyan]", escape(model.name), status, escape(model.note))
-    console.print("[bold]Free models[/bold] (run on your computer, no key needed):")
-    console.print(table)
+            status = "missing"
+        rows.append(ui.ModelRow(model.name, model.note, status, model.min_ram_gb))
+    ui.model_table(console, rows)
     return models
 
 
 def pick_model(console: Console, agent: Agent) -> None:
     """List the free models and switch to the one the student picks; Enter keeps the current."""
     models = show_models(console, agent)
-    try:
-        choice = clean_choice(console.input("Pick a number (Enter to keep the current model): "))
-    except (KeyboardInterrupt, EOFError):
-        choice = ""
+    choice = clean_choice(ui.ask_model_number(console))
     if not choice or choice.lower() in EXIT_COMMANDS:
-        console.print("[dim]Kept the current model.[/dim]\n")
+        ui.note(console, "Kept the current model.")
     elif choice.isdigit() or any(model.name == choice for model in models):
         switch_model(console, agent, choice)
     else:
-        console.print(f"[yellow]There is no model {escape(choice)}.[/yellow]\n")
+        ui.warn(console, f"There is no model {choice}.")
 
 
 def clean_choice(choice: str) -> str:
@@ -115,82 +97,59 @@ def find_model(models: list[FreeModel], choice: str) -> FreeModel:
     return FreeModel(name=choice, note="", installed=False)
 
 
-def download(console: Console, name: str) -> None:
-    """Download ``name`` with a progress bar."""
-    columns = (TextColumn("Downloading {task.description}"), BarColumn(), TaskProgressColumn())
-    with Progress(*columns, console=console, transient=True) as progress:
-        task = progress.add_task(escape(name), total=1.0)
-        for fraction in download_model(name):
-            progress.update(task, completed=fraction)
-
-
 def switch_model(console: Console, agent: Agent, choice: str) -> None:
     """Switch the agent to a free model, downloading it first if the student agrees."""
     model = find_model(list_free_models(), choice)
     ram = total_ram_gb()
-    if too_big(model, ram) and not confirm(
+    # ui.confirm questions are Rich markup, so names from the model list are escaped.
+    if too_big(model, ram) and not ui.confirm(
         console,
         f"{escape(model.name)} needs about {model.min_ram_gb:g} GB of RAM and this computer "
         f"has {ram:.1f} GB, so it may crash or be very slow. Use it anyway?",
     ):
-        console.print("[dim]Kept the current model.[/dim]\n")
+        ui.note(console, "Kept the current model.")
         return
     if not model.installed:
         if choice.isdigit():
-            console.print(f"[yellow]There is no model #{escape(choice)}. Type /model.[/yellow]\n")
+            ui.warn(console, f"There is no model #{choice}. Type /model.")
             return
         what = f" — {model.note}" if model.note else ""
-        if not confirm(
+        if not ui.confirm(
             console, f"{escape(model.name)} isn't downloaded{escape(what)}. Download it?"
         ):
-            console.print("[dim]Kept the current model.[/dim]\n")
+            ui.note(console, "Kept the current model.")
             return
-        download(console, model.name)
+        ui.download_progress(console, model.name, download_model(model.name))
     agent.llm = get_provider("ollama", model.name)
-    console.print(
-        f"[bold green]✓[/bold green] Now using {escape(model.name)}. "
-        "[dim](The conversation so far is kept.)[/dim]\n"
-    )
+    ui.switched_model(console, model.name)
 
 
-def print_stream(console: Console, chunks: Iterator[str]) -> str:
-    """Print ``chunks`` as they arrive and return the full text."""
-    parts: list[str] = []
-    for chunk in chunks:
-        parts.append(chunk)
-        # markup/highlight off so model output is printed verbatim.
-        console.print(chunk, end="", markup=False, highlight=False, soft_wrap=True)
-    console.print("\n")
-    return "".join(parts)
+def waiting_for(agent: Agent) -> str:
+    """Return the spinner text shown until the model's first word arrives."""
+    model = current_model(agent)
+    return f"Waiting for {model} to start" if model else "Waiting for the model to start"
 
 
 def stream_reply(console: Console, agent: Agent, user_input: str) -> str:
-    """Print the agent's reply to ``user_input`` token by token and return it."""
-    return print_stream(console, agent.stream_response(user_input))
-
-
-def confirm(console: Console, question: str) -> bool:
-    """Ask a yes/no question; Ctrl+C or Ctrl+D count as no."""
-    try:
-        return Confirm.ask(question, console=console, default=False)
-    except (KeyboardInterrupt, EOFError):
-        console.print()
-        return False
+    """Render the agent's reply to ``user_input`` as it streams in and return it."""
+    return ui.render_reply(console, agent.stream_response(user_input), waiting_for(agent))
 
 
 def run_fix(console: Console, agent: Agent, relative: str, problem: str) -> None:
     """Ask for a fix to ``relative``, show the diff, and write it if the student agrees."""
-    reply = print_stream(console, agent.request_fix(relative, problem))
+    reply = ui.render_reply(
+        console, agent.request_fix(relative, problem), f"Looking for bugs in {relative}"
+    )
     proposal = propose_fix(agent.root, relative, reply)
     if proposal is None:
-        console.print("[yellow]No code changes were proposed.[/yellow]\n")
+        ui.warn(console, "No code changes were proposed.")
         return
-    console.print(Syntax(proposal.diff, "diff", theme="ansi_dark", background_color="default"))
-    if confirm(console, f"Apply these changes to {escape(relative)}?"):
+    ui.diff_panel(console, relative, proposal.diff)
+    if ui.confirm(console, f"Apply these changes to {escape(relative)}?"):
         proposal.path.write_text(proposal.new_text, encoding="utf-8")
-        console.print(f"[bold green]✓[/bold green] Updated {escape(relative)}\n")
+        ui.success(console, f"Updated {relative}")
     else:
-        console.print("[dim]Left the file unchanged.[/dim]\n")
+        ui.note(console, "Left the file unchanged.")
 
 
 def handle_command(console: Console, agent: Agent, line: str) -> None:
@@ -200,7 +159,7 @@ def handle_command(console: Console, agent: Agent, line: str) -> None:
     target = clean_choice(target)
     command = command.lower()
     if command == "/help":
-        console.print(HELP_TEXT + "\n")
+        ui.help_text(console)
     elif command == "/model":
         if clean_choice(rest):
             switch_model(console, agent, clean_choice(rest))
@@ -208,16 +167,15 @@ def handle_command(console: Console, agent: Agent, line: str) -> None:
             pick_model(console, agent)
     elif command == "/reset":
         agent.reset()
-        console.print("[dim]Started a fresh conversation.[/dim]\n")
+        ui.note(console, "Started a fresh conversation.")
     elif command in ("/read", "/fix") and not target:
-        console.print(f"[yellow]Usage: {command} <file>[/yellow]\n")
+        ui.warn(console, f"Usage: {command} <file>")
     elif command == "/read":
-        agent.attach(target)
-        console.print(f"[dim]Shared {escape(target)}. Now ask your question about it.[/dim]\n")
+        ui.shared_file(console, target, agent.attach(target))
     elif command == "/fix":
         run_fix(console, agent, target, problem.strip())
     else:
-        console.print(f"[yellow]Unknown command {escape(command)}. Type /help.[/yellow]\n")
+        ui.warn(console, f"Unknown command {command}. Type /help.")
 
 
 def run_repl(console: Console, agent: Agent) -> None:
@@ -225,7 +183,7 @@ def run_repl(console: Console, agent: Agent) -> None:
     print_banner(console, agent)
     while True:
         try:
-            user_input = console.input(PROMPT).strip()
+            user_input = console.input(ui.PROMPT).strip()
         except (KeyboardInterrupt, EOFError):
             console.print()
             break
@@ -240,8 +198,8 @@ def run_repl(console: Console, agent: Agent) -> None:
                 stream_reply(console, agent, user_input)
         except KeyboardInterrupt:
             # DESIGN: Ctrl+C mid-stream cancels only the current reply, not the session.
-            console.print("\n[dim](interrupted)[/dim]\n")
+            ui.interrupted(console)
         except (ProviderError, WorkspaceError) as exc:
             # DESIGN: a failed request or bad file path keeps the session alive.
-            console.print(f"\n[bold red]Error:[/bold red] {escape(str(exc))}\n")
-    console.print("[dim]Bye![/dim]")
+            ui.error(console, str(exc))
+    ui.goodbye(console)

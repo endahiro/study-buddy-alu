@@ -98,13 +98,15 @@ class Agent:
             Message(role="assistant", content="".join(reply)),
         ]
 
-    def attach(self, relative: str) -> None:
-        """Queue a project file to be sent with the next message.
+    def attach(self, relative: str) -> int:
+        """Queue a project file to be sent with the next message and return its line count.
 
         Raises:
             WorkspaceError: If the file can't be read.
         """
-        self._attachments.append(format_file(relative, read_source(self.root, relative)))
+        source = read_source(self.root, relative)
+        self._attachments.append(format_file(relative, source))
+        return len(source.splitlines())
 
     def request_fix(self, relative: str, problem: str = "") -> Iterator[str]:
         """Stream an explanation of the bugs in a project file, ending with the corrected file.

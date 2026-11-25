@@ -92,8 +92,9 @@ def test_reset_forgets_everything(tmp_path: Path) -> None:
 
 
 def test_system_prompt_describes_the_real_commands() -> None:
-    from studybuddy.chat import HELP_TEXT
+    from studybuddy.ui.views import COMMANDS
 
+    help_text = " ".join(command for command, _ in COMMANDS)
     for command in ("/read", "/fix", "/model", "/reset"):
         assert command in SYSTEM_PROMPT, f"prompt should tell the model about {command}"
-        assert command in HELP_TEXT, f"{command} is described to the model but doesn't exist"
+        assert command in help_text, f"{command} is described to the model but doesn't exist"

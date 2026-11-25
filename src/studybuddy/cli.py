@@ -5,9 +5,8 @@ from __future__ import annotations
 from pathlib import Path
 
 import typer
-from rich.console import Console
-from rich.markup import escape
 
+from studybuddy import ui
 from studybuddy.agent import Agent
 from studybuddy.chat import run_repl
 from studybuddy.llm import ProviderError, get_provider
@@ -18,7 +17,7 @@ from studybuddy.project import (
     init_project,
 )
 
-console = Console()
+console = ui.make_console()
 
 app = typer.Typer(
     name="studybuddy",
@@ -59,13 +58,9 @@ def init() -> None:
     try:
         project_dir = init_project(cwd)
     except ProjectAlreadyInitializedError:
-        console.print(
-            f"[bold red]Error:[/bold red] {cwd} is already a Study Buddy project "
-            f"([cyan]{PROJECT_DIR_NAME}/[/cyan] exists)."
-        )
+        ui.init_exists(console, cwd, PROJECT_DIR_NAME)
         raise typer.Exit(code=1) from None
-    console.print(f"[bold green]✓[/bold green] Initialized Study Buddy project at {project_dir}")
-    console.print("Run [bold cyan]studybuddy chat[/bold cyan] to start a session.")
+    ui.init_done(console, project_dir)
 
 
 @app.command()
@@ -80,6 +75,6 @@ def chat(
     try:
         llm = get_provider(provider, model)
     except (ProviderError, ValueError) as exc:
-        console.print(f"[bold red]Error:[/bold red] {escape(str(exc))}", highlight=False)
+        ui.error(console, str(exc))
         raise typer.Exit(code=1) from None
     run_repl(console, Agent(llm, root))
