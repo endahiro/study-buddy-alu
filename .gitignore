@@ -16,9 +16,6 @@ dist/
 # Study Buddy project dirs (created by `studybuddy init`)
 .studybuddy/
 
-# Personal Claude Code settings
-.claude/settings.local.json
-
-# Locally installed agent skills (npx skills add ...)
-.claude/skills/
+# Local editor and assistant settings
+.claude/
 skills-lock.json

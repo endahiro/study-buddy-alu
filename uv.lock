@@ -1288,9 +1288,11 @@ wheels = [
 
 [[package]]
 name = "studybuddy"
-version = "0.1.0"
+version = "1.0.0"
 source = { editable = "." }
 dependencies = [
+    { name = "httpx" },
+    { name = "ollama" },
     { name = "rich" },
     { name = "typer" },
 ]
@@ -1301,10 +1303,6 @@ anthropic = [
 ]
 gemini = [
     { name = "google-genai" },
-]
-ollama = [
-    { name = "httpx" },
-    { name = "ollama" },
 ]
 
 [package.dev-dependencies]
@@ -1318,8 +1316,8 @@ dev = [
 requires-dist = [
     { name = "anthropic", marker = "extra == 'anthropic'", specifier = ">=1.9.0" },
     { name = "google-genai", marker = "extra == 'gemini'", specifier = ">=2.25.0" },
-    { name = "httpx", marker = "extra == 'ollama'", specifier = ">=0.27" },
-    { name = "ollama", marker = "extra == 'ollama'", specifier = ">=0.6.3" },
+    { name = "httpx", specifier = ">=0.27" },
+    { name = "ollama", specifier = ">=0.6.3" },
     { name = "rich", specifier = ">=13.7" },
     { name = "typer", specifier = ">=0.12" },
 ]
