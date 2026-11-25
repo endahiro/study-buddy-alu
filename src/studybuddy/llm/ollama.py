@@ -71,6 +71,28 @@ def pull_model(name: str, client: ollama.Client | None = None) -> Iterator[float
         raise ProviderError(f"Couldn't download {name}: {exc}") from exc
 
 
+def embed(texts: list[str], model: str, client: ollama.Client | None = None) -> list[list[float]]:
+    """Return one embedding vector per text, computed by ``model`` on the server.
+
+    Raises:
+        ProviderError: If the server can't be reached or ``model`` isn't downloaded.
+    """
+    client = client if client is not None else ollama.Client(host=DEFAULT_HOST)
+    try:
+        response = client.embed(model=model, input=texts)
+    except ollama.ResponseError as exc:
+        if exc.status_code == 404:
+            raise ProviderError(
+                f"The {model} model isn't downloaded. Run /learn again to get it."
+            ) from exc
+        raise ProviderError(f"Ollama couldn't embed text: {exc}") from exc
+    except OLLAMA_ERRORS as exc:
+        raise ProviderError(
+            f"Can't reach Ollama ({exc}). Is it running? Start it with: ollama serve"
+        ) from exc
+    return [list(vector) for vector in response.embeddings]
+
+
 def request_error(exc: Exception) -> ProviderError:
     """Wrap a failed chat request, explaining the likely cause when the server died."""
     message = f"Ollama request failed: {exc}"
