@@ -35,12 +35,75 @@ no account, no API key and no cost.
 | Start a new conversation | `/reset` |
 | See all commands / quit | `/help` · `exit` |
 
+## Before you start
+
+You need:
+
+- **Windows 10 or 11, macOS, or Linux**
+- **At least 4 GB of RAM** and **about 3 GB of free disk space**
+- **An internet connection** to install (after that, Study Buddy works offline)
+- **On Linux:** your password, because installing Ollama uses `sudo`
+- **On macOS:** [Homebrew](https://brew.sh), or install the
+  [Ollama app](https://ollama.com/download) yourself first
+
+You don't need Python, Git or an account: the installer sets up everything else. It
+checks all of the above before it installs anything, and tells you what's missing.
+
 ## Install
 
-You need a computer with **at least 4 GB of RAM** and **about 3 GB of free disk space**.
-Setup takes about 10 minutes, mostly downloading.
+One command installs everything: Ollama (runs the AI model on your computer), uv
+(installs Python apps), Study Buddy and the AI model. It takes about 10 minutes, mostly
+downloading. Running it again is safe; it skips what you have and updates Study Buddy.
 
-### Step 1: Install Ollama (it runs the AI model on your computer)
+**macOS or Linux:** open a terminal and run
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/endahiro/study-buddy-alu/main/install.sh | sh
+```
+
+**Windows:** open PowerShell and run
+
+```powershell
+powershell -ExecutionPolicy ByPass -c "irm https://raw.githubusercontent.com/endahiro/study-buddy-alu/main/install.ps1 | iex"
+```
+
+You'll see it check your computer, then go through four steps:
+
+```
+Checking your computer
+  ✓ System: Linux
+  ✓ Internet connection
+  ✓ Memory: 4.8 GB
+  ✓ Free disk space: 937 GB
+  • Ollama: will be installed
+  • uv: will be installed
+  • Study Buddy: will be installed
+
+[1/4] Ollama (runs the AI model on your computer)
+  ✓ Installed
+[2/4] uv (installs Study Buddy and the Python it needs)
+  ✓ Installed
+[3/4] Study Buddy
+  ✓ Installed
+[4/4] AI model qwen2.5-coder:1.5b (about 1 GB, only the first time)
+  ✓ Ready
+
+✓ Study Buddy is installed.
+```
+
+Then **open a new terminal**, go to a folder with your code or notes, and start it:
+
+```bash
+cd path/to/your/project
+studybuddy
+```
+
+Study Buddy can only open files inside the folder you start it in.
+
+<details>
+<summary><b>Manual install</b> (if the one-command install doesn't work for you)</summary>
+
+#### Step 1: Install Ollama (it runs the AI model on your computer)
 
 - **Windows or macOS:** download the installer from <https://ollama.com/download>, run
   it, and keep the Ollama app running.
@@ -51,13 +114,13 @@ Setup takes about 10 minutes, mostly downloading.
 
 Check that it worked: `ollama --version` prints a version number.
 
-### Step 2: Download the AI model (about 1 GB)
+#### Step 2: Download the AI model (about 1 GB)
 
 ```bash
 ollama pull qwen2.5-coder:1.5b
 ```
 
-### Step 3: Install uv (it installs Study Buddy and the Python it needs)
+#### Step 3: Install uv (it installs Study Buddy and the Python it needs)
 
 - **macOS or Linux:**
   ```bash
@@ -71,7 +134,7 @@ ollama pull qwen2.5-coder:1.5b
 Then **close your terminal and open a new one**. You don't need to install Python
 yourself; uv takes care of it.
 
-### Step 4: Install Study Buddy
+#### Step 4: Install Study Buddy
 
 ```bash
 uv tool install https://github.com/endahiro/study-buddy-alu/releases/download/v1.0.0/studybuddy-1.0.0-py3-none-any.whl
@@ -80,7 +143,7 @@ uv tool install https://github.com/endahiro/study-buddy-alu/releases/download/v1
 If you then see a warning that the install folder is not on your `PATH`, run
 `uv tool update-shell`, then close and reopen your terminal.
 
-### Step 5: Run it
+#### Step 5: Run it
 
 Go to a folder with your code or notes and start it:
 
@@ -90,6 +153,8 @@ studybuddy
 ```
 
 Study Buddy can only open files inside the folder you start it in.
+
+</details>
 
 ## Try it
 
