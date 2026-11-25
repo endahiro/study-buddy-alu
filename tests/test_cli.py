@@ -315,3 +315,98 @@ def test_unknown_ram_never_blocks_switching(
     monkeypatch.setattr("studybuddy.chat.total_ram_gb", lambda: None)
     result = runner.invoke(app, ["-p", "mock"], input="/model 4\nexit\n")
     assert "Now using qwen2.5-coder:3b" in result.output
+
+
+# --- /learn, /forget and answers that use notes (RAG) --------------------------------------
+
+NOTE = "# Recursion\nA recursive function needs a base case, or the stack overflows.\n"
+
+
+@pytest.fixture
+def rag(in_tmp: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, object]:
+    """Fake embeddings and the embedding model download; write one note file."""
+    from tests.fakes import keyword_embed
+
+    seen: dict[str, object] = {"downloaded": [], "installed": True}
+    monkeypatch.setattr("studybuddy.cli.embed_texts", keyword_embed)
+    monkeypatch.setattr("studybuddy.chat.model_installed", lambda name: seen["installed"])
+
+    def fake_download(name: str) -> Iterator[float]:
+        seen["downloaded"].append(name)  # type: ignore[attr-defined]
+        yield 1.0
+
+    monkeypatch.setattr("studybuddy.chat.download_model", fake_download)
+    (in_tmp / "notes").mkdir()
+    (in_tmp / "notes" / "recursion.md").write_text(NOTE)
+    return seen
+
+
+def test_learned_notes_are_sent_with_related_questions(
+    rag: dict[str, object], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    llm = use_scripted(monkeypatch, "It needs a base case.", "A list holds items.")
+    result = runner.invoke(
+        app,
+        [],
+        input="/learn notes\nwhy does recursion need a base case?\nwhat is a list?\nexit\n",
+    )
+    assert result.exit_code == 0, result.output
+    assert "Learned 1 file (1 passage)" in result.output
+    assert "From your notes: notes/recursion.md:1-2" in result.output
+    first_question = llm.requests[0][-1].content
+    assert "stack overflows" in first_question
+    assert first_question.endswith("why does recursion need a base case?")
+    assert "stack overflows" not in llm.requests[1][-1].content  # unrelated: no notes
+    # Excerpts are sent once, not stored in the conversation history.
+    assert llm.requests[1][1].content == "why does recursion need a base case?"
+
+
+def test_notes_are_kept_between_sessions(rag: dict[str, object]) -> None:
+    runner.invoke(app, [], input="/learn notes\nexit\n")
+    result = runner.invoke(app, [], input="/learn\nexit\n")
+    assert "Learned notes · 1 file" in result.output
+    assert "notes/recursion.md" in result.output
+
+
+def test_learn_with_nothing_learned_explains_how(rag: dict[str, object]) -> None:
+    result = runner.invoke(app, [], input="/learn\nexit\n")
+    assert "No notes learned yet" in result.output
+
+
+def test_forget_clears_notes(rag: dict[str, object]) -> None:
+    runner.invoke(app, [], input="/learn notes\nexit\n")
+    result = runner.invoke(app, [], input="/forget\n/learn\nexit\n")
+    assert "Forgot all learned notes" in result.output
+    assert "No notes learned yet" in result.output
+
+
+def test_learn_downloads_the_embedding_model_after_approval(rag: dict[str, object]) -> None:
+    rag["installed"] = False
+    declined = runner.invoke(app, [], input="/learn notes\nn\nexit\n")
+    assert "Didn't learn anything" in declined.output
+    assert rag["downloaded"] == []
+
+    accepted = runner.invoke(app, [], input="/learn notes\ny\nexit\n")
+    assert rag["downloaded"] == ["nomic-embed-text"]
+    assert "Learned 1 file" in accepted.output
+
+
+def test_learn_rejects_paths_outside_the_project(rag: dict[str, object]) -> None:
+    result = runner.invoke(app, [], input="/learn ../..\nexit\n")
+    assert "outside the project" in result.output
+    assert "Bye!" in result.output
+
+
+def test_question_is_answered_when_notes_cannot_be_searched(
+    rag: dict[str, object], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    runner.invoke(app, [], input="/learn notes\nexit\n")
+
+    def down(texts: list[str]) -> list[list[float]]:
+        raise ProviderError("Can't reach Ollama")
+
+    monkeypatch.setattr("studybuddy.cli.embed_texts", down)
+    use_scripted(monkeypatch, "Answer without notes.")
+    result = runner.invoke(app, [], input="recursion?\nexit\n")
+    assert "Couldn't search your notes" in result.output
+    assert "Answer without notes." in result.output
